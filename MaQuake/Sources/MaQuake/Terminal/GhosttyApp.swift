@@ -74,11 +74,12 @@ final class GhosttyApp: @unchecked Sendable {
         ghostty_config_finalize(primaryConfig)
 
         let diagnosticCount = ghostty_config_diagnostics_count(primaryConfig)
+        os_log(.default, log: log, "config loaded, diagnostics=%d", diagnosticCount)
         if diagnosticCount > 0 {
             for i in 0..<diagnosticCount {
                 let diag = ghostty_config_get_diagnostic(primaryConfig, i)
                 if let msg = diag.message {
-                    os_log(.info, log: log, "ghostty config diagnostic: %{public}s", String(cString: msg))
+                    os_log(.error, log: log, "ghostty config diagnostic: %{public}s", String(cString: msg))
                 }
             }
         }
@@ -247,6 +248,7 @@ final class GhosttyApp: @unchecked Sendable {
         }
 
         // App-level actions
+        os_log(.default, log: log, "app action tag=%d", action.tag.rawValue)
         switch action.tag {
         case GHOSTTY_ACTION_RELOAD_CONFIG:
             reloadConfig()

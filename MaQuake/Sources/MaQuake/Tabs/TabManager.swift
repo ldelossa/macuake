@@ -60,6 +60,7 @@ final class TabManager: ObservableObject {
     @AppStorage("terminalOpacity") private var savedOpacity: Double = 0.95
 
     private var splitObserver: Any?
+    private var ghosttyActionObserver: Any?
 
     init() {
         theme.backgroundOpacity = savedOpacity
@@ -71,6 +72,12 @@ final class TabManager: ObservableObject {
             guard let self, let axis = notif.userInfo?["axis"] as? String,
                   let pm = self.activeTab?.paneManager else { return }
             pm.splitFocusedPane(axis: axis == "horizontal" ? .horizontal : .vertical)
+        }
+        ghosttyActionObserver = NotificationCenter.default.addObserver(
+            forName: .macuakeGhosttyAction, object: nil, queue: .main
+        ) { [weak self] notif in
+            guard let self, let info = notif.userInfo, let name = info["action"] as? String else { return }
+            self.handleGhosttyAction(name, arg: info["arg"] as? String ?? "", value: info["value"] as? Int ?? 0)
         }
     }
 
@@ -100,6 +107,28 @@ final class TabManager: ObservableObject {
         tabs.append(tab)
         activeTabIndex = tabs.count - 1
         focusTerminalInActiveTab()
+    }
+
+    /// Handle tab/split actions triggered by Ghostty keybindings.
+    func handleGhosttyAction(_ name: String, arg: String, value: Int) {
+        switch name {
+        case "new_tab": addTab()
+        case "close_tab": if let tab = activeTab { closeTab(id: tab.id) }
+        case "goto_tab":
+            switch arg {
+            case "next": selectNextTab()
+            case "previous": selectPreviousTab()
+            case "last": selectTab(at: tabs.count - 1)
+            default: selectTab(at: value)
+            }
+        case "move_tab":
+            guard !tabs.isEmpty else { return }
+            let dest = min(max(activeTabIndex + value, 0), tabs.count - 1)
+            moveTab(from: activeTabIndex, to: dest)
+        case "new_split": splitActivePane(axis: arg == "horizontal" ? .horizontal : .vertical)
+        case "goto_split": moveFocusInActiveTab(arg == "next" ? .next : .previous)
+        default: break
+        }
     }
 
     func closeTab(id: String) {
@@ -238,9 +267,16 @@ final class TabManager: ObservableObject {
         guard let tab = activeTab, let pm = tab.paneManager,
               let backend = pm.focusedBackend else { return }
         let termView = backend.focusableView
-        DispatchQueue.main.async {
-            termView.window?.makeFirstResponder(termView)
+        // The view of a freshly created tab may not be attached to the window yet
+        // (SwiftUI inserts it lazily), so retry briefly until it is.
+        func attempt(_ remaining: Int) {
+            if let window = termView.window {
+                window.makeFirstResponder(termView)
+            } else if remaining > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { attempt(remaining - 1) }
+            }
         }
+        DispatchQueue.main.async { attempt(20) }
     }
 
     // MARK: - Tab State Persistence

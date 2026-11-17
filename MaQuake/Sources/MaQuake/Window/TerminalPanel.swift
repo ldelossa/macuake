@@ -62,5 +62,7 @@ final class TerminalPanel: NSPanel {
 
 extension Notification.Name {
     static let panelDidResignKey = Notification.Name("macuake.panelDidResignKey")
+    /// Posted by GhosttyBackend for Ghostty tab/split actions. userInfo: ["action": String, "value": Int?]
+    static let macuakeGhosttyAction = Notification.Name("macuake.ghosttyAction")
     static let macuakeSplitRequest = Notification.Name("macuake.splitRequest")
 }

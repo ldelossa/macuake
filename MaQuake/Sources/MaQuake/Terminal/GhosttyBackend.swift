@@ -282,6 +282,7 @@ final class GhosttyBackend: NSObject, TerminalBackend {
     // MARK: - Action handling (called from GhosttyApp)
 
     func handleAction(_ action: ghostty_action_s) -> Bool {
+        os_log(.default, log: log, "surface action tag=%d", action.tag.rawValue)
         switch action.tag {
         case GHOSTTY_ACTION_SET_TITLE:
             if let titlePtr = action.action.set_title.title {
@@ -345,6 +346,8 @@ final class GhosttyBackend: NSObject, TerminalBackend {
             DispatchQueue.main.async { [weak self] in
                 self?.delegate?.terminalRequestedSplit(direction: direction.rawValue)
             }
+            let horizontal = direction == GHOSTTY_SPLIT_DIRECTION_RIGHT || direction == GHOSTTY_SPLIT_DIRECTION_LEFT
+            postGhosttyAction("new_split", horizontal ? "horizontal" : "vertical")
             return true
 
         case GHOSTTY_ACTION_GOTO_SPLIT:
@@ -352,6 +355,33 @@ final class GhosttyBackend: NSObject, TerminalBackend {
             DispatchQueue.main.async { [weak self] in
                 self?.delegate?.terminalRequestedGotoSplit(direction: direction.rawValue)
             }
+            // Panes are a flat leaf list: left/up behave as previous, right/down as next.
+            let forward = direction == GHOSTTY_GOTO_SPLIT_NEXT || direction == GHOSTTY_GOTO_SPLIT_RIGHT
+                || direction == GHOSTTY_GOTO_SPLIT_DOWN
+            postGhosttyAction("goto_split", forward ? "next" : "previous")
+            return true
+
+        // Tab actions
+        case GHOSTTY_ACTION_NEW_TAB:
+            postGhosttyAction("new_tab")
+            return true
+
+        case GHOSTTY_ACTION_CLOSE_TAB:
+            postGhosttyAction("close_tab")
+            return true
+
+        case GHOSTTY_ACTION_GOTO_TAB:
+            let target = Int(action.action.goto_tab.rawValue)
+            switch target {
+            case Int(GHOSTTY_GOTO_TAB_PREVIOUS.rawValue): postGhosttyAction("goto_tab", "previous")
+            case Int(GHOSTTY_GOTO_TAB_NEXT.rawValue): postGhosttyAction("goto_tab", "next")
+            case Int(GHOSTTY_GOTO_TAB_LAST.rawValue): postGhosttyAction("goto_tab", "last")
+            default: postGhosttyAction("goto_tab", "index", target - 1)
+            }
+            return true
+
+        case GHOSTTY_ACTION_MOVE_TAB:
+            postGhosttyAction("move_tab", "", Int(action.action.move_tab.amount))
             return true
 
         case GHOSTTY_ACTION_RESIZE_SPLIT:
@@ -375,7 +405,16 @@ final class GhosttyBackend: NSObject, TerminalBackend {
             return true
 
         default:
+            os_log(.info, log: log, "UNHANDLED surface action tag=%d", action.tag.rawValue)
             return false
+        }
+    }
+
+    private func postGhosttyAction(_ name: String, _ arg: String = "", _ value: Int = 0) {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .macuakeGhosttyAction, object: nil,
+                userInfo: ["action": name, "arg": arg, "value": value])
         }
     }
 
