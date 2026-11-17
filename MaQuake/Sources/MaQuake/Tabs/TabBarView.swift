@@ -130,8 +130,9 @@ struct TabBarView: View {
                     }
         .padding(.top, 4)
         .frame(height: 36)
-        .background(Color.black.opacity(0.85))
-        .environment(\.colorScheme, .dark)
+        .background(Color(hex: windowController.tabBarColorHex).opacity(windowController.tabBarOpacity))
+        .environment(\.colorScheme,
+            Color(hex: windowController.tabBarColorHex).perceivedLuminance > 0.5 ? .light : .dark)
         .contentShape(Rectangle())
     }
 

@@ -18,6 +18,9 @@ final class WindowController: ObservableObject {
     @Published var widthPercent: Int = 75
     @Published var heightPercent: Int = 50
     @Published var panelWidth: CGFloat = 0
+    @Published var topCornerRadius: Double = 12
+    @Published var tabBarColorHex: String = "#000000"
+    @Published var tabBarOpacity: Double = 0.85
 
     private var previousApp: NSRunningApplication?
     private var resignObserver: Any?
@@ -39,6 +42,9 @@ final class WindowController: ObservableObject {
     @AppStorage("terminalWidthPercent") private var savedWidthPercent: Int = 75
     @AppStorage("terminalHeightPercent") private var savedHeightPercent: Int = 50
     @AppStorage("selectedDisplayID") private var savedDisplayID: Int = 0
+    @AppStorage("topCornerRadius") private var savedTopCornerRadius: Double = 12
+    @AppStorage("tabBarColorHex") private var savedTabBarColorHex: String = "#000000"
+    @AppStorage("tabBarOpacity") private var savedTabBarOpacity: Double = 0.85
 
     // MARK: - Sizes
 
@@ -67,6 +73,9 @@ final class WindowController: ObservableObject {
         self.displayID = savedDisplayID
         self.widthPercent = savedWidthPercent
         self.heightPercent = savedHeightPercent
+        self.topCornerRadius = savedTopCornerRadius
+        self.tabBarColorHex = savedTabBarColorHex
+        self.tabBarOpacity = savedTabBarOpacity
 
         setupContentView()
         setupObservers()
@@ -473,6 +482,28 @@ final class WindowController: ObservableObject {
     func setHeightPercent(_ percent: Int) {
         heightPercent = min(max(percent, 20), 100)
         savedHeightPercent = heightPercent
+    }
+
+    // MARK: - Appearance
+
+    func setTopCornerRadius(_ radius: Double) {
+        topCornerRadius = min(max(radius, 0), 20)
+        savedTopCornerRadius = topCornerRadius
+    }
+
+    func setTabBarColor(_ color: Color) {
+        tabBarColorHex = color.toHex()
+        savedTabBarColorHex = tabBarColorHex
+    }
+
+    func setTabBarOpacity(_ opacity: Double) {
+        tabBarOpacity = min(max(opacity, 0), 1)
+        savedTabBarOpacity = tabBarOpacity
+    }
+
+    func resetTabBarColor() {
+        setTabBarColor(.black)
+        setTabBarOpacity(0.85)
     }
 
     func setDisplayID(_ id: Int) {

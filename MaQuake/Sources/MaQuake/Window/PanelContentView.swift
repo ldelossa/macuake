@@ -35,6 +35,15 @@ struct PanelContentView: View {
         return max(fromFrame, safeTop)
     }
 
+    private var panelShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: windowController.topCornerRadius,
+            bottomLeadingRadius: 12,
+            bottomTrailingRadius: 12,
+            topTrailingRadius: windowController.topCornerRadius
+        )
+    }
+
     // MARK: - Terminal content (always full size — animation only clips)
 
     private var terminalContent: some View {
@@ -116,27 +125,18 @@ struct PanelContentView: View {
                     terminalContent
                         .frame(height: currentSize.height, alignment: .top)
                         .clipped()
-                        .clipShape(UnevenRoundedRectangle(
-                            topLeadingRadius: 0, bottomLeadingRadius: 12,
-                            bottomTrailingRadius: 12, topTrailingRadius: 0
-                        ))
+                        .clipShape(panelShape)
                         .overlay(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 0, bottomLeadingRadius: 12,
-                                bottomTrailingRadius: 12, topTrailingRadius: 0
-                            )
-                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                            panelShape
+                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                         )
                         .opacity(isVisible ? 1 : 0)
 
                     // Resize preview border (shown during drag)
                     if let preview = resizePreview, isVisible {
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 0, bottomLeadingRadius: 12,
-                            bottomTrailingRadius: 12, topTrailingRadius: 0
-                        )
-                        .stroke(Color.white.opacity(0.3), lineWidth: 2)
-                        .frame(width: preview.width, height: preview.height)
+                        panelShape
+                            .stroke(Color.white.opacity(0.3), lineWidth: 2)
+                            .frame(width: preview.width, height: preview.height)
                     }
 
                     // Corner resize handles (overlaid at bottom corners)

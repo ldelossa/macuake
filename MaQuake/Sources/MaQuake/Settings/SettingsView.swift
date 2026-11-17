@@ -277,6 +277,49 @@ struct SettingsView: View {
                     .padding(8)
                 }
 
+                GroupBox("Appearance") {
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("Corner radius:")
+                                .frame(width: 100, alignment: .leading)
+                            Slider(
+                                value: Binding(
+                                    get: { windowController.topCornerRadius },
+                                    set: { windowController.setTopCornerRadius($0) }
+                                ),
+                                in: 0...20,
+                                step: 1
+                            )
+                            Text("\(Int(windowController.topCornerRadius))")
+                                .monospacedDigit()
+                                .frame(width: 24)
+                        }
+
+                        HStack {
+                            Text("Tab bar color:")
+                                .frame(width: 100, alignment: .leading)
+                            ColorPicker("", selection: Binding(
+                                get: { Color(hex: windowController.tabBarColorHex) },
+                                set: { windowController.setTabBarColor($0) }
+                            ))
+                            .labelsHidden()
+                            Slider(
+                                value: Binding(
+                                    get: { windowController.tabBarOpacity },
+                                    set: { windowController.setTabBarOpacity($0) }
+                                ),
+                                in: 0...1,
+                                step: 0.05
+                            )
+                            Text("\(Int(windowController.tabBarOpacity * 100))%")
+                                .monospacedDigit()
+                                .frame(width: 40)
+                            Button("Reset") { windowController.resetTabBarColor() }
+                        }
+                    }
+                    .padding(8)
+                }
+
                 GroupBox("Display") {
                     HStack {
                         Picker("Screen:", selection: Binding(
