@@ -354,20 +354,14 @@ struct SettingsView: View {
                 }
                 GroupBox("Updates") {
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Toggle("Check for updates automatically", isOn: Binding(
-                                get: { SparkleUpdater.shared.automaticallyChecksForUpdates },
-                                set: { SparkleUpdater.shared.automaticallyChecksForUpdates = $0 }
-                            ))
-                            Spacer()
-                        }
-                        HStack {
-                            Button("Check for Updates…") {
-                                SparkleUpdater.shared.checkForUpdates()
-                            }
-                            .disabled(!SparkleUpdater.shared.canCheckForUpdates)
-                            Spacer()
-                        }
+                        Text("Updates are managed by Homebrew.")
+                        Text("Install a newly published fork build with:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(HomebrewUpdates.upgradeCommand)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                        HStack { Spacer() }
                     }
                     .padding(8)
                 }

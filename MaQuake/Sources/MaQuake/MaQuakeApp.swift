@@ -78,7 +78,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             mcp.start()
             mcpHTTPServer = mcp
         }
-        _ = SparkleUpdater.shared // Start automatic update checks
     }
 
     private func setupStatusItem() {
@@ -111,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        let updateItem = NSMenuItem(title: "Updates via Homebrew…", action: #selector(openSettingsMenu), keyEquivalent: "")
         updateItem.target = self
         menu.addItem(updateItem)
 
@@ -144,10 +143,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openHelpMenu() {
         windowController.openHelp()
-    }
-
-    @objc private func checkForUpdates() {
-        SparkleUpdater.shared.checkForUpdates()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

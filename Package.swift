@@ -8,7 +8,6 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "2.0.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.0.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
     ],
     targets: [
@@ -21,7 +20,6 @@ let package = Package(
             dependencies: [
                 "KeyboardShortcuts",
                 "GhosttyKit",
-                .product(name: "Sparkle", package: "Sparkle"),
                 .product(name: "MCP", package: "swift-sdk"),
             ],
             path: "MaQuake/Sources/MaQuake",

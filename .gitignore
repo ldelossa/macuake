@@ -1,5 +1,8 @@
 .build/
 build/
+.plans/
+__pycache__/
+*.py[cod]
 .swiftpm/
 *.xcodeproj/
 xcuserdata/

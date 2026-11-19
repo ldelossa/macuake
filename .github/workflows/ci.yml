@@ -4,27 +4,28 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, ui-updates]
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Download pre-built GhosttyKit
+      - name: Download checksum-pinned GhosttyKit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/download-ghosttykit.sh
 
-      - name: Build
-        run: swift build
-
-      - name: Run tests
-        run: swift test 2>&1 | tee test-output.txt
+      - name: Run headless regression and release-tool checks
+        run: ./scripts/check-regressions.sh
 
       - name: Test summary
         if: always()
-        run: grep -E "(Test run|Suite.*failed)" test-output.txt || echo "Tests completed"
+        run: grep -hE '(Test run|Suite.*failed)' build/checks/*.log || true
+
+# Signed application releases are published locally by publish-release.sh.
+# CI has no signing keys, notarization credentials, or release-write permission.

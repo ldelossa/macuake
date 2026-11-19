@@ -1,128 +1,170 @@
-# macuake
+# Macuake: ldelossa fork
 
-> **Alpha** — Quake-style drop-down terminal for macOS, powered by [Ghostty](https://ghostty.org).
+A personal fork of [menemy/macuake](https://github.com/menemy/macuake), a Quake-style drop-down terminal powered by [Ghostty](https://ghostty.org).
+Press `Option+Space` to show or hide the terminal.
 
-One hotkey. Instant terminal. `Option+Space` slides it down from the top of any screen.
+**Apple Silicon only, macOS 14 or later.**
+Releases are built and Developer-ID signed locally, but are intentionally **not notarized**.
+Updates are manual through Homebrew, with no Sparkle or upstream update feed.
 
-![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
-![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange?logo=swift)
-![License: MIT](https://img.shields.io/badge/License-MIT-blue)
+## Install on another Mac
 
-## Features
+Install [Homebrew](https://brew.sh) if it is not already available, then run:
 
-- **GPU-accelerated** — GhosttyKit Metal renderer. True color, ligatures, GPU text shaping.
-- **Hotkey toggle** — `Option+Space` (customizable) from any app. No Dock icon.
-- **Tabs & split panes** — multiple sessions with horizontal/vertical splits.
-- **Ghostty themes** — use any Ghostty config for fonts, colors, opacity, keybindings.
-- **MCP server** — built-in HTTP server (port 19876) with 17 tools. Control from Claude Code, Cursor, or any MCP client.
-- **Socket API** — Unix socket at `/tmp/macuake.sock` for scripting.
-- **Auto-updates** — Sparkle integration with EdDSA-signed releases.
-- **Multi-display** — follows cursor across screens, notch-aware.
-
-## Install
-
-Download from [Releases](https://github.com/menemy/macuake/releases), or:
-
-```bash
-curl -LO https://github.com/menemy/macuake/releases/latest/download/Macuake.dmg
-open Macuake.dmg
-# Drag to /Applications
+```sh
+brew install --cask ldelossa/macuake/macuake
 ```
 
-### Build from source
+Launch `/Applications/Macuake.app`.
+If macOS blocks the first launch, approve it in **System Settings > Privacy & Security > Open Anyway** after checking that you trust this fork.
+That approval may be needed separately on each Mac.
+The cask does not disable Gatekeeper, remove quarantine, or bypass security policy.
 
-Requires: macOS 14+, Swift 5.9+, [Zig 0.15.2](https://ziglang.org/download/) (for GhosttyKit).
+The app has the same `com.maquake.app` identity as upstream.
+It is a replacement, not a side-by-side installation.
+If an upstream or manually installed copy is already present, finish your terminal work, quit it, and move that app aside yourself before installing the cask.
+Do not use `--force` to overwrite an app with active sessions.
+Your preferences and `~/.config/ghostty/config` are not bundled or overwritten.
 
-```bash
-git clone --recursive https://github.com/menemy/macuake.git
-cd macuake
-./scripts/build-ghostty.sh   # build GhosttyKit xcframework
-swift build                   # debug build
+### Update
+
+Finish terminal work and quit Macuake before upgrading:
+
+```sh
+brew update
+brew upgrade --cask ldelossa/macuake/macuake
 ```
 
-## Usage
+Updates appear only when a new fork release is published.
+The app's Updates settings and menu explain this Homebrew-only policy.
+Uninstalling the cask removes the app, not your Ghostty configuration or saved preferences.
 
-Launch macuake — it lives in the menu bar (no Dock icon). Press `Option+Space` to toggle.
+## Fork features
+
+- Independent tab-bar and selected/hovered-tab RGB colors and opacity.
+- Simple color pickers with saturation/brightness, hue, hex and opacity controls.
+- Automatic opaque black/white foreground contrast against composited backgrounds.
+- Owned picker/popover interactions no longer trigger outside-click auto-hide.
+- Keyboard focus follows new splits, pane navigation and pane closure.
+- Renderer cursor focus follows the active native terminal without changing cursor shape/blink preferences.
+- Pane zoom retains the real split tree, sessions and divider ratios.
+- Ghostty's tab-title prompt action opens the inline rename editor.
+
+Idle tabs remain flat on the bar, while selected and hovered tabs use the chosen fill.
+The selected tab also has a bottom marker.
+
+## Shortcuts and Ghostty configuration
 
 | Shortcut | Action |
 |----------|--------|
-| `Option+Space` | Toggle terminal |
+| `Option+Space` | Toggle terminal, configurable in Settings |
 | `Cmd+T` | New tab |
 | `Cmd+W` | Close tab |
-| `Cmd+D` | Split horizontal |
-| `Cmd+Shift+D` | Split vertical |
+| `Cmd+D` | Split horizontally |
+| `Cmd+Shift+D` | Split vertically |
 | `Cmd+]` / `Cmd+[` | Next / previous pane |
-| `Cmd+1`..`9` | Switch to tab N |
+| `Cmd+1` through `Cmd+9` | Switch tabs |
 | `Cmd+,` | Settings |
 
-### Ghostty config
+Existing Ghostty configuration is read from `~/.config/ghostty/config`.
+These optional bindings reproduce the zoom/rename shortcuts used during verification:
 
-macuake uses your Ghostty config (`~/.config/ghostty/config`). Open it from Settings or:
-
-```bash
-echo '{"action":"state"}' | nc -U /tmp/macuake.sock
+```ini
+keybind = ctrl+alt+z=toggle_split_zoom
+keybind = ctrl+alt+comma=prompt_tab_title
 ```
 
-## MCP Server
+These lines are examples, not an installed settings override.
+Zoom follows pane navigation and exits when creating a split or closing the zoomed pane.
+A one-pane tab does not zoom.
+For rename, Enter saves, Escape cancels, and leaving the editor commits once.
 
-Add to Claude Code:
+## Build from source
 
-```bash
+Maintainer prerequisites are full Xcode, Git and Python 3.
+The source also uses the pinned SwiftPM dependencies in `Package.resolved`.
+The local release toolchain was verified with Xcode 27.0 beta 6 and its Swift toolchain.
+A prebuilt Homebrew installation needs none of these development tools beyond Homebrew's own requirements.
+
+```sh
+git clone https://github.com/ldelossa/macuake.git
+cd macuake
+./scripts/download-ghosttykit.sh
+swift build --scratch-path .build/development --disable-automatic-resolution
+```
+
+Set `DEVELOPER_DIR` to your full Xcode installation if needed.
+The downloader uses the exact Ghostty gitlink and SHA256 in `Dependencies/GhosttyKit.json`, independent of `GITHUB_REPOSITORY`.
+It installs no host packages and verifies existing binaries rather than silently accepting a different local build.
+The original Ghostty source remains pinned as a submodule for rebuilding or inspection.
+Third-party license notices are bundled with the app.
+
+Build a local ad-hoc development archive, without installing or launching it:
+
+```sh
+./scripts/build-install.sh
+```
+
+The legacy helper copies `/Applications/Macuake_dev.app` only with `--install`, and refuses to replace an existing copy.
+It retains the normal app identity and is not intended to run alongside another Macuake.
+
+### Verification
+
+```sh
+./scripts/check-regressions.sh
+./scripts/check-regressions.sh --gpu  # requires a real local Metal device
+```
+
+Each suite runs in a separate process with separate build products.
+The GPU checks exercise actual Ghostty surfaces/actions; they are not physical-shortcut or cursor-pixel UI tests.
+CI runs the headless regression matrix and Python release-tool tests, and does not publish releases.
+
+## Publish a new personal release
+
+On the signing Mac, keep the Developer ID Application private key in Keychain.
+Do not export it or add signing/notarization secrets to GitHub.
+Install/authenticate the GitHub CLI and keep a local clone of the public tap at a path such as `~/git/homebrew-macuake`.
+Both repositories must be clean, on `main`, and identical to their pushed `origin/main`.
+The scripts refuse unexpected remotes, existing version tags, dirty source and branch divergence.
+
+After committing and pushing source changes, publish a new unused version with one command:
+
+```sh
+./scripts/publish-release.sh 0.3.3 --tap-path "$HOME/git/homebrew-macuake"
+```
+
+`SIGNING_IDENTITY` may select a specific valid Developer ID Application name or fingerprint if more than one is present.
+The tool builds arm64, packages resources and required Swift compatibility libraries, removes development loader paths, signs nested code and the app, verifies a relocated archive, and generates SHA256/provenance metadata.
+It also publishes corresponding app/Ghostty/gettext source materials and bundled third-party notices.
+It creates a draft release, downloads the uploaded ZIP to compare its checksum, publishes it, then commits and pushes the version-pinned cask.
+It never installs or launches the app, terminates sessions, notarizes it, or changes user settings.
+
+If a network/upload/push step fails, inspect the retained tag/draft/release and tap checkout before resuming manually.
+No force push, tag overwrite, automatic deletion or destructive rollback is attempted.
+Never reuse a published version for different bytes.
+
+To build/sign/validate an archive without publishing:
+
+```sh
+./scripts/build-release.sh 0.3.3
+```
+
+Outputs are under `build/releases/<version>/`, not the running `build/Macuake.app`.
+For a locally rebuilt or modified Ghostty library, `--ad-hoc --local-ghostty` permits relinking without the maintainer's private key.
+The publication path never accepts that override.
+
+## Existing APIs
+
+The fork retains the existing MCP HTTP server and Unix-socket API without changing their permissions or enabling settings.
+See [API.md](API.md) for the socket reference.
+The existing socket path is `/tmp/macuake.sock` and the MCP endpoint is `http://localhost:19876/mcp` when enabled.
+
+```sh
 claude mcp add --transport http macuake http://localhost:19876/mcp
 ```
 
-17 tools available: `state`, `list`, `toggle`, `show`, `hide`, `pin`, `unpin`, `new_tab`, `focus`, `close_session`, `execute`, `read`, `paste`, `control_char`, `clear`, `split`, `set_appearance`.
+## License and credits
 
-### Pane support
-
-```bash
-# List tabs with pane tree
-claude> list(include_panes=true)
-
-# Focus a specific pane
-claude> focus(pane_id="...")
-
-# Navigate panes
-claude> focus(direction="next")
-
-# Close a pane (not the whole tab)
-claude> close_session(pane_id="...")
-```
-
-## Socket API
-
-See [API.md](API.md) for the full reference.
-
-```bash
-# Execute a command
-echo '{"action":"execute","command":"ls -la"}' | nc -U /tmp/macuake.sock
-
-# Read terminal output
-echo '{"action":"read","lines":50}' | nc -U /tmp/macuake.sock
-
-# Split pane
-echo '{"action":"split","direction":"h"}' | nc -U /tmp/macuake.sock
-```
-
-## Architecture
-
-```
-MaQuake/Sources/MaQuake/
-├── API/              # ControlServer (socket API)
-├── MCP/              # MCPHTTPServer (MCP over HTTP)
-├── Panes/            # PaneManager, PaneNode tree
-├── Settings/         # SettingsView, HelpView
-├── Tabs/             # TabManager, TabBarView
-├── Terminal/         # GhosttyApp, GhosttyBackend, GhosttyTerminalView
-├── Updates/          # SparkleUpdater
-└── Window/           # WindowController, TerminalPanel, ScreenDetector
-```
-
-- **GhosttyKit** — vendored xcframework, GPU Metal terminal engine
-- **KeyboardShortcuts** — global hotkey (sindresorhus)
-- **Sparkle** — auto-updates
-- **SPM** project (not Xcode), `swift build` / `swift test`
-
-## License
-
-MIT
+MIT, consistent with the upstream README's license declaration.
+Original Macuake contributors, [Ghostty](https://github.com/ghostty-org/ghostty), KeyboardShortcuts and the MCP Swift SDK retain their respective credits and licenses.
+This is a personal fork, not an upstream release or an official Homebrew cask.

@@ -4,19 +4,21 @@
 <dict>
     <key>CFBundleName</key>
     <string>maquake</string>
+    <key>CFBundleExecutable</key>
+    <string>Macuake</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
     <key>CFBundleIdentifier</key>
     <string>com.maquake.app</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>0.3.2</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.1</string>
+    <string>0.3.2</string>
     <key>LSUIElement</key>
     <true/>
     <key>CFBundleIconFile</key>
     <string>maquake</string>
-    <key>SUFeedURL</key>
-    <string>https://github.com/menemy/macuake/releases/latest/download/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string>DO/Ypd5E8hupynUNtIqqxZCs0CNEfeWoKX8ielcAfTM=</string>
 </dict>
 </plist>

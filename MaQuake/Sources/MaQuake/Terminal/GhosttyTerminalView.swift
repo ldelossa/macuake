@@ -1,8 +1,5 @@
 import AppKit
 import GhosttyKit
-import os.log
-
-private let keyLog = OSLog(subsystem: "com.macuake", category: "Keys")
 
 /// NSView subclass that hosts the Ghostty Metal renderer and forwards input events.
 final class GhosttyTerminalView: NSView {
@@ -162,9 +159,6 @@ final class GhosttyTerminalView: NSView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        os_log(.default, log: keyLog, "performKeyEquivalent type=%d keyCode=%d flags=%lx chars=%{public}s firstResponder=%{public}s",
-               event.type.rawValue, event.keyCode, event.modifierFlags.rawValue,
-               event.characters ?? "nil", String(describing: window?.firstResponder))
         guard event.type == .keyDown else { return false }
 
         // Only handle if this view (or a descendant) is the first responder.
@@ -190,7 +184,6 @@ final class GhosttyTerminalView: NSView {
             }
         }()
 
-        os_log(.default, log: keyLog, "is_binding=%{public}s keyCode=%d mods=%u", isBinding ? "true" : "false", event.keyCode, Self.modsFromEvent(event).rawValue)
         if isBinding {
             keyDown(with: event)
             return true
