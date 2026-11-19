@@ -12,8 +12,13 @@ Updates are manual through Homebrew, with no Sparkle or upstream update feed.
 Install [Homebrew](https://brew.sh) if it is not already available, then run:
 
 ```sh
+brew tap ldelossa/macuake
+brew trust ldelossa/macuake
 brew install --cask ldelossa/macuake/macuake
 ```
+
+Homebrew 7 requires `brew trust` before it loads a third-party cask.
+It is a one-time, reversible local approval (`brew untrust ldelossa/macuake`), not a Gatekeeper or quarantine change.
 
 Launch `/Applications/Macuake.app`.
 If macOS blocks the first launch, approve it in **System Settings > Privacy & Security > Open Anyway** after checking that you trust this fork.
