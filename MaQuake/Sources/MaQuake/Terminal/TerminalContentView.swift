@@ -87,6 +87,7 @@ final class TerminalInstance: NSObject, TerminalBackendDelegate {
     var onProcessTerminated: (() -> Void)?
     var onResizeSplit: ((CGFloat) -> Void)?
     var onEqualizeSplits: (() -> Void)?
+    var onToggleSplitZoom: (() -> Void)?
     private(set) var currentTitle: String = "zsh"
     private(set) var currentDirectory: String = ""
     private var isTerminated = false
@@ -156,5 +157,9 @@ final class TerminalInstance: NSObject, TerminalBackendDelegate {
 
     func terminalRequestedEqualizeSplits() {
         onEqualizeSplits?()
+    }
+
+    func terminalRequestedToggleSplitZoom() {
+        onToggleSplitZoom?()
     }
 }

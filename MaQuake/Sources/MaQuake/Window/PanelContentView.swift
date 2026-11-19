@@ -113,7 +113,10 @@ struct PanelContentView: View {
             // Dismiss layer
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture { windowController.hide() }
+                .onTapGesture {
+                    AutoHideTrace.record("panel.dismissLayer.click", panel: windowController.panel, includeWindows: true)
+                    windowController.hide(source: "dismissLayer")
+                }
                 .allowsHitTesting(isVisible && !windowController.isPinned)
 
             VStack(spacing: 0) {

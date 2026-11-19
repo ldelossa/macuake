@@ -296,25 +296,41 @@ struct SettingsView: View {
                         }
 
                         HStack {
-                            Text("Tab bar color:")
+                            Text("Bar color:")
                                 .frame(width: 100, alignment: .leading)
-                            ColorPicker("", selection: Binding(
+                            SimpleColorPicker(title: "Bar color", selection: Binding(
                                 get: { Color(hex: windowController.tabBarColorHex) },
                                 set: { windowController.setTabBarColor($0) }
-                            ))
-                            .labelsHidden()
-                            Slider(
-                                value: Binding(
-                                    get: { windowController.tabBarOpacity },
-                                    set: { windowController.setTabBarOpacity($0) }
-                                ),
-                                in: 0...1,
-                                step: 0.05
-                            )
-                            Text("\(Int(windowController.tabBarOpacity * 100))%")
+                            ), opacity: Binding(
+                                get: { windowController.tabBarOpacity },
+                                set: { windowController.setTabBarOpacity($0) }
+                            ), isParentVisible: windowController.state == .visible,
+                               onPresentationChange: windowController.setTransientInteraction)
+                            Text("\(Int((windowController.tabBarOpacity * 100).rounded()))%")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                                 .monospacedDigit()
-                                .frame(width: 40)
+                            Spacer()
                             Button("Reset") { windowController.resetTabBarColor() }
+                        }
+
+                        HStack {
+                            Text("Tab color:")
+                                .frame(width: 100, alignment: .leading)
+                            SimpleColorPicker(title: "Tab color", selection: Binding(
+                                get: { Color(hex: windowController.tabColorHex) },
+                                set: { windowController.setTabColor($0) }
+                            ), opacity: Binding(
+                                get: { windowController.tabOpacity },
+                                set: { windowController.setTabOpacity($0) }
+                            ), isParentVisible: windowController.state == .visible,
+                               onPresentationChange: windowController.setTransientInteraction)
+                            Text("\(Int((windowController.tabOpacity * 100).rounded()))%")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            Spacer()
+                            Button("Reset") { windowController.resetTabColor() }
                         }
                     }
                     .padding(8)

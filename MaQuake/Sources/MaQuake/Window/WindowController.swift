@@ -9,6 +9,10 @@ enum PanelState: Equatable {
 
 @MainActor
 final class WindowController: ObservableObject {
+    enum AutoHideReason: Equatable {
+        case focusLoss, outsideClick, applicationSwitch
+    }
+
     let panel: TerminalPanel
     let tabManager: TabManager
 
@@ -21,6 +25,8 @@ final class WindowController: ObservableObject {
     @Published var topCornerRadius: Double = 12
     @Published var tabBarColorHex: String = "#000000"
     @Published var tabBarOpacity: Double = 0.85
+    @Published var tabColorHex: String = "#262626"
+    @Published var tabOpacity: Double = 1.0
 
     private var previousApp: NSRunningApplication?
     private var resignObserver: Any?
@@ -33,6 +39,9 @@ final class WindowController: ObservableObject {
 
     // Debounce: ignore resign/appSwitch hide triggers briefly after show()
     private var showTimestamp: Date = .distantPast
+    private var transientInteractionIDs: Set<UUID> = []
+
+    var hasTransientInteraction: Bool { !transientInteractionIDs.isEmpty }
 
     // Scroll wheel state for tab switching
     private var scrollAccumulator: CGFloat = 0
@@ -45,6 +54,8 @@ final class WindowController: ObservableObject {
     @AppStorage("topCornerRadius") private var savedTopCornerRadius: Double = 12
     @AppStorage("tabBarColorHex") private var savedTabBarColorHex: String = "#000000"
     @AppStorage("tabBarOpacity") private var savedTabBarOpacity: Double = 0.85
+    @AppStorage("tabColorHex") private var savedTabColorHex: String = "#262626"
+    @AppStorage("tabOpacity") private var savedTabOpacity: Double = 1.0
 
     // MARK: - Sizes
 
@@ -76,6 +87,8 @@ final class WindowController: ObservableObject {
         self.topCornerRadius = savedTopCornerRadius
         self.tabBarColorHex = savedTabBarColorHex
         self.tabBarOpacity = savedTabBarOpacity
+        self.tabColorHex = savedTabColorHex
+        self.tabOpacity = savedTabOpacity
 
         setupContentView()
         setupObservers()
@@ -88,6 +101,7 @@ final class WindowController: ObservableObject {
         repositionPanel()
         panel.ignoresMouseEvents = true
         panel.orderFrontRegardless()
+        traceAutoHide("controller.ready", includeWindows: true)
     }
 
     deinit {
@@ -147,10 +161,8 @@ final class WindowController: ObservableObject {
         ) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
-                guard Date().timeIntervalSince(self.showTimestamp) > 0.3 else { return }
-                if self.state == .visible && !self.isPinned {
-                    self.hide()
-                }
+                self.traceAutoHide("observer.panelDidResignKey", includeWindows: true)
+                self.requestAutoHide(.focusLoss)
             }
         }
 
@@ -162,15 +174,9 @@ final class WindowController: ObservableObject {
             guard let self else { return }
             guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             Task { @MainActor in
-                guard Date().timeIntervalSince(self.showTimestamp) > 0.3 else { return }
-                if app.bundleIdentifier != Bundle.main.bundleIdentifier,
-                   self.state == .visible {
-                    if self.isPinned {
-                        // Pinned: stay visible but release keyboard focus
-                        self.panel.resignKey()
-                    } else {
-                        self.hide()
-                    }
+                self.traceAutoHide("observer.applicationActivated", details: "activatedPID=\(app.processIdentifier) activatedBundle=\(app.bundleIdentifier ?? "unknown")", includeWindows: true)
+                if app.bundleIdentifier != Bundle.main.bundleIdentifier {
+                    self.requestAutoHide(.applicationSwitch)
                 }
             }
         }
@@ -327,14 +333,31 @@ final class WindowController: ObservableObject {
     // MARK: - Mouse Monitors
 
     private func setupClickMonitor() {
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                if self.state == .visible && !self.isPinned {
-                    self.hide()
-                }
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            // AppKit delivers event-monitor handlers on the main thread. Resolve
+            // ownership now, before a deferred task could see a dismissed window.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let eventDetails = "type=\(event.type.rawValue) eventWindow=\(event.windowNumber) eventTime=\(event.timestamp) eventX=\(event.locationInWindow.x) eventY=\(event.locationInWindow.y)"
+                self.traceAutoHide("observer.globalMouseDown", details: eventDetails, includeWindows: true)
+                self.handleGlobalMouseDown(windowNumber: event.windowNumber)
             }
         }
+    }
+
+    /// A global monitor can also receive clicks delivered to an owned popover.
+    /// Determine ownership by the window relationship, not by monitor category.
+    func handleGlobalMouseDown(windowNumber: Int) {
+        var window = windowNumber > 0 ? NSApp?.window(withWindowNumber: windowNumber) : nil
+        while let candidate = window {
+            if candidate === panel {
+                traceAutoHide("globalClick.ignored", details: "reason=terminalOwnedWindow eventWindow=\(windowNumber)", includeWindows: true)
+                return
+            }
+            window = candidate.parent
+        }
+        traceAutoHide("globalClick.outside", details: "eventWindow=\(windowNumber)")
+        requestAutoHide(.outsideClick)
     }
 
     /// Middle click on tab → close that tab (Chrome behavior)
@@ -393,6 +416,68 @@ final class WindowController: ObservableObject {
         }
     }
 
+    // MARK: - Owned transient UI and auto-hide
+
+    private func traceAutoHide(_ event: String, details: String = "", includeWindows: Bool = false) {
+        guard AutoHideTrace.isEnabled else { return }
+        let ids = transientInteractionIDs.map { String($0.uuidString.prefix(8)) }.sorted().joined(separator: ",")
+        AutoHideTrace.record(event, panel: panel, details: "state=\(state) pinned=\(isPinned) interactions=[\(ids)] \(details)", includeWindows: includeWindows)
+    }
+
+    /// Called synchronously before a picker opens, and on every dismissal path.
+    func setTransientInteraction(_ id: UUID, isPresented: Bool) {
+        traceAutoHide("interaction.requested", details: "id=\(id.uuidString.prefix(8)) presented=\(isPresented)")
+        if isPresented {
+            guard state == .visible else {
+                traceAutoHide("interaction.ignored", details: "reason=parentHidden")
+                return
+            }
+            transientInteractionIDs.insert(id)
+            traceAutoHide("interaction.acquired")
+        } else {
+            guard transientInteractionIDs.remove(id) != nil else {
+                traceAutoHide("interaction.ignored", details: "reason=unknownID")
+                return
+            }
+            traceAutoHide("interaction.released")
+            // Do not activate Macuake over another app when a popover closes.
+            if !hasTransientInteraction, state == .visible, NSApp?.isActive == true {
+                traceAutoHide("interaction.restoreParentKey")
+                panel.makeKey()
+            }
+        }
+    }
+
+    /// Focus may move into an owned popover without leaving the terminal UI.
+    /// Real outside clicks, app switches, and explicit hide are not suppressed.
+    func requestAutoHide(_ reason: AutoHideReason, at timestamp: Date = Date()) {
+        traceAutoHide("autoHide.requested", details: "reason=\(reason) sinceShow=\(timestamp.timeIntervalSince(showTimestamp))", includeWindows: true)
+        guard state == .visible else {
+            traceAutoHide("autoHide.ignored", details: "reason=hidden")
+            return
+        }
+        if reason != .outsideClick, timestamp.timeIntervalSince(showTimestamp) <= 0.3 {
+            traceAutoHide("autoHide.ignored", details: "reason=showDebounce")
+            return
+        }
+        if isPinned {
+            traceAutoHide("autoHide.ignored", details: "reason=pinned")
+            if reason == .applicationSwitch { panel.resignKey() }
+            return
+        }
+        if reason == .focusLoss {
+            guard !hasTransientInteraction else {
+                traceAutoHide("autoHide.ignored", details: "reason=ownedInteraction")
+                return
+            }
+            guard !panel.isKeyWindow else {
+                traceAutoHide("autoHide.ignored", details: "reason=parentStillKey")
+                return
+            }
+        }
+        hide(source: "auto.\(reason)")
+    }
+
     // MARK: - Toggle (SwiftUI animation driven by state change)
 
     func toggle() {
@@ -401,6 +486,7 @@ final class WindowController: ObservableObject {
     }
 
     func show() {
+        traceAutoHide("show.requested", includeWindows: true)
         guard state == .hidden else { return }
         showTimestamp = Date()
         previousApp = NSWorkspace.shared.frontmostApplication
@@ -426,14 +512,17 @@ final class WindowController: ObservableObject {
                 }
             }
 
+            traceAutoHide("show.committed", includeWindows: true)
             tabManager.focusTerminalInActiveTab()
         }
 
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
 
-    func hide() {
+    func hide(source: String = "explicit") {
+        traceAutoHide("hide.requested", details: "source=\(source)", includeWindows: true)
         guard state == .visible else { return }
+        transientInteractionIDs.removeAll()
 
         if UserDefaults.standard.bool(forKey: "disableAnimation") {
             state = .hidden
@@ -443,12 +532,14 @@ final class WindowController: ObservableObject {
             }
         }
         panel.ignoresMouseEvents = true
+        traceAutoHide("hide.committed", details: "source=\(source)", includeWindows: true)
 
         // After animation settles (or immediately) — activate previous app
         let delay = UserDefaults.standard.bool(forKey: "disableAnimation") ? 0.05 : 0.5
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.state == .hidden else { return }
             if let prev = self.previousApp, !prev.isTerminated {
+                self.traceAutoHide("hide.restorePreviousApp", details: "targetPID=\(prev.processIdentifier) targetBundle=\(prev.bundleIdentifier ?? "unknown")")
                 prev.activate()
             }
         }
@@ -492,11 +583,13 @@ final class WindowController: ObservableObject {
     }
 
     func setTabBarColor(_ color: Color) {
+        traceAutoHide("appearance.barRGBChanged")
         tabBarColorHex = color.toHex()
         savedTabBarColorHex = tabBarColorHex
     }
 
     func setTabBarOpacity(_ opacity: Double) {
+        traceAutoHide("appearance.barOpacityChanged")
         tabBarOpacity = min(max(opacity, 0), 1)
         savedTabBarOpacity = tabBarOpacity
     }
@@ -504,6 +597,23 @@ final class WindowController: ObservableObject {
     func resetTabBarColor() {
         setTabBarColor(.black)
         setTabBarOpacity(0.85)
+    }
+
+    func setTabColor(_ color: Color) {
+        traceAutoHide("appearance.tabRGBChanged")
+        tabColorHex = color.toHex()
+        savedTabColorHex = tabColorHex
+    }
+
+    func setTabOpacity(_ opacity: Double) {
+        traceAutoHide("appearance.tabOpacityChanged")
+        tabOpacity = min(max(opacity, 0), 1)
+        savedTabOpacity = tabOpacity
+    }
+
+    func resetTabColor() {
+        setTabColor(Color(hex: "#262626"))
+        setTabOpacity(1.0)
     }
 
     func setDisplayID(_ id: Int) {

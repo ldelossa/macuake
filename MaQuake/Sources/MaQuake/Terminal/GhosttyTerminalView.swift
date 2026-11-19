@@ -10,6 +10,7 @@ final class GhosttyTerminalView: NSView {
     private var trackingArea: NSTrackingArea?
     private var markedTextStorage = NSMutableAttributedString()
     private var keyTextAccumulator: [String]?
+    private var windowFocusObservers: [NSObjectProtocol] = []
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -19,6 +20,12 @@ final class GhosttyTerminalView: NSView {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setup()
+    }
+
+    deinit {
+        for observer in windowFocusObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     private func setup() {
@@ -35,9 +42,10 @@ final class GhosttyTerminalView: NSView {
 
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
-        if result, let surface = backend?.surface {
-            ghostty_surface_set_focus(surface, true)
-            if let displayID = window?.screen?.displayID, displayID != 0 {
+        if result {
+            updateRendererFocus(isFirstResponder: true)
+            if let surface = backend?.surface,
+               let displayID = window?.screen?.displayID, displayID != 0 {
                 ghostty_surface_set_display_id(surface, displayID)
             }
         }
@@ -46,10 +54,23 @@ final class GhosttyTerminalView: NSView {
 
     override func resignFirstResponder() -> Bool {
         let result = super.resignFirstResponder()
-        if result, let surface = backend?.surface {
-            ghostty_surface_set_focus(surface, false)
-        }
+        if result { backend?.setSurfaceFocus(false) }
         return result
+    }
+
+    private func synchronizeRendererFocus() {
+        updateRendererFocus(isFirstResponder: window?.firstResponder === self)
+    }
+
+    private func updateRendererFocus(isFirstResponder: Bool) {
+        guard let backend else { return }
+        guard isFirstResponder, let window, window.isVisible, window.isKeyWindow,
+              !window.ignoresMouseEvents,
+              window.childWindows?.contains(where: { $0.isKeyWindow }) != true else {
+            backend.setSurfaceFocus(false)
+            return
+        }
+        GhosttyApp.shared.focusBackend(backend)
     }
 
     // MARK: - Layout & Display
@@ -61,8 +82,26 @@ final class GhosttyTerminalView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard window != nil else { return }
+        for observer in windowFocusObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        windowFocusObservers.removeAll()
+        guard window != nil else {
+            backend?.setSurfaceFocus(false)
+            return
+        }
         updateSurfaceSize()
+        // Observe all key-window transfers, including owned popovers that can
+        // become key without changing the parent's stored first responder.
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            let observer = NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.synchronizeRendererFocus() }
+            }
+            windowFocusObservers.append(observer)
+        }
+        synchronizeRendererFocus()
     }
 
     override func viewDidChangeBackingProperties() {

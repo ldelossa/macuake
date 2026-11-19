@@ -45,6 +45,9 @@ final class TerminalPanel: NSPanel {
     }
 
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown || event.type == .rightMouseDown {
+            AutoHideTrace.record("panel.mouseDown", panel: self, details: "eventWindow=\(event.windowNumber) eventTime=\(event.timestamp) eventX=\(event.locationInWindow.x) eventY=\(event.locationInWindow.y)", includeWindows: true)
+        }
         // Ensure first click inside panel is delivered immediately
         if event.type == .leftMouseDown {
             makeKey()
@@ -54,7 +57,9 @@ final class TerminalPanel: NSPanel {
 
     // Resign key when clicking outside
     override func resignKey() {
+        AutoHideTrace.record("panel.resignKey.before", panel: self, includeWindows: true)
         super.resignKey()
+        AutoHideTrace.record("panel.resignKey.after", panel: self, includeWindows: true)
         // Notify the window controller that focus was lost
         NotificationCenter.default.post(name: .panelDidResignKey, object: self)
     }

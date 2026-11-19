@@ -208,6 +208,15 @@ final class GhosttyApp: @unchecked Sendable {
         backendsLock.unlock()
     }
 
+    /// A native responder transfer must also clear any stale renderer focus
+    /// left behind when SwiftUI rebuilt or detached a split's native views.
+    func focusBackend(_ backend: GhosttyBackend) {
+        for other in activeBackends.values where other !== backend {
+            other.setSurfaceFocus(false)
+        }
+        backend.setSurfaceFocus(true)
+    }
+
     private var activeBackends: [ObjectIdentifier: GhosttyBackend] {
         backendsLock.lock()
         let copy = _activeBackends

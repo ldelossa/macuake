@@ -3,7 +3,7 @@ import SwiftUI
 @testable import Macuake
 
 /// Tests for the Color hex/luminance helpers and the WindowController appearance
-/// setters (corner radius, tab bar color, tab bar opacity).
+/// setters (corner radius, independent bar/tab colors, and bar opacity).
 @Suite
 struct ColorHexTests {
 
@@ -60,6 +60,17 @@ struct ColorHexTests {
 @MainActor
 @Suite(.serialized)
 struct WindowControllerAppearanceTests {
+    private func preservingColorSettings(_ test: () -> Void) {
+        let defaults = UserDefaults.standard
+        let saved = ["tabColorHex", "tabOpacity", "tabBarColorHex", "tabBarOpacity"].map { ($0, defaults.object(forKey: $0)) }
+        defer {
+            for (key, value) in saved {
+                if let value { defaults.set(value, forKey: key) }
+                else { defaults.removeObject(forKey: key) }
+            }
+        }
+        test()
+    }
 
     // MARK: - setTopCornerRadius clamping
 
@@ -116,5 +127,111 @@ struct WindowControllerAppearanceTests {
         wc.resetTabBarColor()
         #expect(wc.tabBarColorHex == "#000000")
         #expect(wc.tabBarOpacity == 0.85)
+    }
+
+    // MARK: - Independent tab color
+
+    @Test func tabColor_defaultsWithoutChangingExistingBarSettings() {
+        preservingColorSettings {
+            let defaults = UserDefaults.standard
+            defaults.removeObject(forKey: "tabColorHex")
+            defaults.removeObject(forKey: "tabOpacity")
+            defaults.set("#237E71", forKey: "tabBarColorHex")
+            defaults.set(0.4, forKey: "tabBarOpacity")
+            let wc = WindowController()
+            #expect(wc.tabColorHex == "#262626")
+            #expect(wc.tabOpacity == 1)
+            #expect(wc.tabBarColorHex == "#237E71")
+            #expect(wc.tabBarOpacity == 0.4)
+        }
+    }
+
+    @Test func setTabColor_persistsIndependentlyAcrossControllers() {
+        preservingColorSettings {
+            let wc = WindowController()
+            wc.setTabBarColor(Color(hex: "#237E71"))
+            wc.setTabBarOpacity(0.35)
+            wc.setTabColor(Color(hex: "#AD3657"))
+            wc.setTabOpacity(0.55)
+            #expect(wc.tabColorHex == "#AD3657")
+            #expect(UserDefaults.standard.string(forKey: "tabColorHex") == "#AD3657")
+            let restored = WindowController()
+            #expect(restored.tabColorHex == "#AD3657")
+            #expect(restored.tabOpacity == 0.55)
+            #expect(restored.tabBarColorHex == "#237E71")
+            #expect(restored.tabBarOpacity == 0.35)
+        }
+    }
+
+    @Test func resetTabColor_leavesBarAndOpacityUnchanged() {
+        preservingColorSettings {
+            let wc = WindowController()
+            wc.setTabBarColor(Color(hex: "#237E71"))
+            wc.setTabBarOpacity(0.35)
+            wc.setTabColor(.white)
+            wc.setTabOpacity(0.4)
+            wc.resetTabColor()
+            #expect(wc.tabColorHex == "#262626")
+            #expect(UserDefaults.standard.string(forKey: "tabColorHex") == "#262626")
+            #expect(wc.tabOpacity == 1)
+            #expect(UserDefaults.standard.double(forKey: "tabOpacity") == 1)
+            #expect(wc.tabBarColorHex == "#237E71")
+            #expect(wc.tabBarOpacity == 0.35)
+        }
+    }
+
+    @Test func resetBarColor_leavesSelectedTabColorUnchanged() {
+        preservingColorSettings {
+            let wc = WindowController()
+            wc.setTabColor(Color(hex: "#AD3657"))
+            wc.setTabOpacity(0.45)
+            wc.setTabBarColor(.white)
+            wc.setTabBarOpacity(0.2)
+            wc.resetTabBarColor()
+            #expect(wc.tabBarColorHex == "#000000")
+            #expect(wc.tabBarOpacity == 0.85)
+            #expect(wc.tabColorHex == "#AD3657")
+            #expect(wc.tabOpacity == 0.45)
+            #expect(UserDefaults.standard.string(forKey: "tabColorHex") == "#AD3657")
+        }
+    }
+
+    @Test func tabOpacity_clampsAndPersists() {
+        preservingColorSettings {
+            let wc = WindowController()
+            for (input, expected) in [(-0.5, 0.0), (0.35, 0.35), (1.5, 1.0)] {
+                wc.setTabOpacity(input)
+                #expect(wc.tabOpacity == expected)
+                #expect(UserDefaults.standard.double(forKey: "tabOpacity") == expected)
+            }
+        }
+    }
+
+    @Test func opacityChangesPreserveRGBAndOtherOpacity() {
+        preservingColorSettings {
+            let wc = WindowController()
+            wc.setTabBarColor(Color(hex: "#237E71"))
+            wc.setTabColor(Color(hex: "#AD3657"))
+            wc.setTabBarOpacity(0.7)
+            wc.setTabOpacity(0.4)
+            wc.setTabBarOpacity(0.2)
+            #expect(wc.tabOpacity == 0.4)
+            wc.setTabOpacity(0)
+            #expect(wc.tabBarOpacity == 0.2)
+            #expect(wc.tabBarColorHex == "#237E71")
+            #expect(wc.tabColorHex == "#AD3657")
+        }
+    }
+
+    @Test func RGBChangesPreserveBothOpacities() {
+        preservingColorSettings {
+            let wc = WindowController()
+            wc.setTabBarOpacity(0.3)
+            wc.setTabOpacity(0.45)
+            wc.setTabBarColor(.white)
+            wc.setTabColor(.black)
+            #expect(wc.tabBarOpacity == 0.3)
+            #expect(wc.tabOpacity == 0.45)
+        }
     }
 }

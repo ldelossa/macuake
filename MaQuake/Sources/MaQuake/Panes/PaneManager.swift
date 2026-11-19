@@ -5,7 +5,10 @@ import os.log
 final class PaneManager: ObservableObject {
     @Published var rootPane: PaneNode
     @Published var focusedPaneID: String
+    @Published private(set) var isZoomed = false
 
+    /// Called after pane selection or a structural change requires native focus.
+    var onFocusChange: (() -> Void)?
     /// Called when the focused pane's title changes.
     var onFocusedTitleChange: ((String) -> Void)?
     /// Called when the focused pane's directory changes.
@@ -60,6 +63,8 @@ final class PaneManager: ObservableObject {
 
         rootPane = splitNode(rootPane, targetID: id, axis: axis, newBackend: newBackend, newPaneID: newPaneID, ratio: ratio)
         focusedPaneID = newPaneID
+        isZoomed = false
+        onFocusChange?()
         return true
     }
 
@@ -84,10 +89,27 @@ final class PaneManager: ObservableObject {
             instances.removeValue(forKey: id)
             if !rootPane.leafIDs.contains(focusedPaneID) {
                 focusedPaneID = rootPane.leafIDs.first!
+                isZoomed = false
             }
+            if rootPane.leafCount == 1 { isZoomed = false }
+            // Collapsing a split can detach the selected view even when its
+            // pane ID is unchanged. Restore its responder after reattachment.
+            onFocusChange?()
             return true
         }
         return true
+    }
+
+    // MARK: - Zoom
+
+    /// Zoom changes presentation only; the complete tree and all sessions stay alive.
+    /// Resolve the visible pane from focusedPaneID so navigation also moves the zoom.
+    func toggleZoom(for paneID: String? = nil) {
+        let targetID = paneID ?? focusedPaneID
+        guard rootPane.leafCount > 1, rootPane.backend(for: targetID) != nil else { return }
+        focusedPaneID = targetID
+        isZoomed.toggle()
+        onFocusChange?()
     }
 
     // MARK: - Resize
@@ -139,6 +161,7 @@ final class PaneManager: ObservableObject {
         case .previous:
             focusedPaneID = leaves[(currentIndex - 1 + leaves.count) % leaves.count]
         }
+        onFocusChange?()
     }
 
     // MARK: - Callbacks
@@ -173,6 +196,12 @@ final class PaneManager: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.resizeFocusedSplit(delta: delta)
+            }
+        }
+
+        instance.onToggleSplitZoom = { [weak self] in
+            Task { @MainActor in
+                self?.toggleZoom(for: paneID)
             }
         }
 

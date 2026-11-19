@@ -25,7 +25,13 @@ struct PaneSplitView: View {
     }
 
     private var node: PaneNode {
-        explicitNode ?? paneManager.rootPane
+        // Only the root chooses zoom presentation. Never replace the real tree
+        // or mount a backend in both a hidden split and a zoom overlay.
+        if explicitNode == nil, paneManager.isZoomed,
+           let backend = paneManager.focusedBackend {
+            return .leaf(id: paneManager.focusedPaneID, backend: backend)
+        }
+        return explicitNode ?? paneManager.rootPane
     }
 
     /// Minimum pane size in points.
@@ -36,6 +42,9 @@ struct PaneSplitView: View {
         case .leaf(let id, let backend):
             ZStack {
                 TerminalContentView(backend: backend, theme: theme)
+                    // Focus changes can swap the leaf at this same zoomed path.
+                    // A new pane must mount its own NSView, not reuse the old one.
+                    .id(id)
 
                 // Focus indicator when multiple panes exist
                 if paneManager.focusedPaneID == id && paneManager.rootPane.leafCount > 1 {

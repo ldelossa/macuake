@@ -16,6 +16,16 @@ final class GhosttyBackend: NSObject, TerminalBackend {
     var view: NSView { containerView }
     var focusableView: NSView { surfaceView }
 
+    /// Last focus command requested by the native view lifecycle.
+    private(set) var isSurfaceFocused = false
+
+    func setSurfaceFocus(_ focused: Bool) {
+        isSurfaceFocused = focused
+        // Always forward the initial false command: Ghostty itself starts each
+        // surface focused, even though our host-side default is unfocused.
+        if let surface { ghostty_surface_set_focus(surface, focused) }
+    }
+
     override init() {
         let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         surfaceView = GhosttyTerminalView(frame: frame)
@@ -78,6 +88,7 @@ final class GhosttyBackend: NSObject, TerminalBackend {
             return nil
         }
 
+        newBackend.setSurfaceFocus(false)
         ghostty_surface_set_color_scheme(newBackend.surface!, GHOSTTY_COLOR_SCHEME_DARK)
         ghostty_surface_refresh(newBackend.surface!)
 
@@ -147,6 +158,8 @@ final class GhosttyBackend: NSObject, TerminalBackend {
             return
         }
 
+        setSurfaceFocus(false)
+
         // Set display ID for CVDisplayLink
         if let displayID = (surfaceView.window?.screen ?? NSScreen.main)?.displayID, displayID != 0 {
             ghostty_surface_set_display_id(surface, displayID)
@@ -173,6 +186,7 @@ final class GhosttyBackend: NSObject, TerminalBackend {
     }
 
     func terminate() {
+        setSurfaceFocus(false)
         guard let s = surface else { return }
         surface = nil
         ghostty_surface_free(s)
@@ -362,6 +376,11 @@ final class GhosttyBackend: NSObject, TerminalBackend {
             return true
 
         // Tab actions
+        case GHOSTTY_ACTION_PROMPT_TITLE:
+            guard action.action.prompt_title == GHOSTTY_PROMPT_TITLE_TAB else { return false }
+            postGhosttyAction("prompt_tab_title", source: self)
+            return true
+
         case GHOSTTY_ACTION_NEW_TAB:
             postGhosttyAction("new_tab")
             return true
@@ -410,10 +429,10 @@ final class GhosttyBackend: NSObject, TerminalBackend {
         }
     }
 
-    private func postGhosttyAction(_ name: String, _ arg: String = "", _ value: Int = 0) {
+    private func postGhosttyAction(_ name: String, _ arg: String = "", _ value: Int = 0, source: TerminalBackend? = nil) {
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: .macuakeGhosttyAction, object: nil,
+                name: .macuakeGhosttyAction, object: source,
                 userInfo: ["action": name, "arg": arg, "value": value])
         }
     }

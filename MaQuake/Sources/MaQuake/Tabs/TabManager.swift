@@ -61,6 +61,7 @@ final class TabManager: ObservableObject {
 
     private var splitObserver: Any?
     private var ghosttyActionObserver: Any?
+    private var terminalFocusRequest = UUID()
 
     init() {
         theme.backgroundOpacity = savedOpacity
@@ -76,8 +77,16 @@ final class TabManager: ObservableObject {
         ghosttyActionObserver = NotificationCenter.default.addObserver(
             forName: .macuakeGhosttyAction, object: nil, queue: .main
         ) { [weak self] notif in
-            guard let self, let info = notif.userInfo, let name = info["action"] as? String else { return }
-            self.handleGhosttyAction(name, arg: info["arg"] as? String ?? "", value: info["value"] as? Int ?? 0)
+            // This observer is explicitly delivered on AppKit's main queue.
+            MainActor.assumeIsolated {
+                guard let self, let info = notif.userInfo, let name = info["action"] as? String else { return }
+                if name == "prompt_tab_title" {
+                    guard let source = notif.object as? TerminalBackend else { return }
+                    self.beginRenamingActiveTab(from: source)
+                } else {
+                    self.handleGhosttyAction(name, arg: info["arg"] as? String ?? "", value: info["value"] as? Int ?? 0)
+                }
+            }
         }
     }
 
@@ -94,6 +103,11 @@ final class TabManager: ObservableObject {
         let index = tabs.count
 
         // Wire PaneManager callbacks
+        tab.paneManager?.onFocusChange = { [weak self] in
+            guard let self, self.activeTab?.id == tabID else { return }
+            self.focusTerminalInActiveTab()
+        }
+
         tab.paneManager?.onFocusedTitleChange = { [weak self] title in
             guard let self, index < self.tabs.count, self.tabs[index].id == tabID else { return }
             self.tabs[index].title = title
@@ -161,6 +175,28 @@ final class TabManager: ObservableObject {
 
     var canReopenClosedTab: Bool {
         !closedTabDirectories.isEmpty
+    }
+
+    @discardableResult
+    func beginRenamingActiveTab(from source: TerminalBackend) -> Bool {
+        guard let tab = activeTab, let pm = tab.paneManager,
+              pm.rootPane.leafIDs.contains(where: { pm.rootPane.backend(for: $0) === source }) else { return false }
+        return beginRenamingTab(id: tab.id)
+    }
+
+    @discardableResult
+    func beginRenamingTab(id: String) -> Bool {
+        guard tabs.contains(where: { $0.id == id && $0.kind == .terminal }) else { return false }
+        // A pending tab/split attachment must not steal focus from the editor.
+        terminalFocusRequest = UUID()
+        editingTabID = id
+        return true
+    }
+
+    func finishRenamingTab(id: String) {
+        guard editingTabID == id else { return }
+        editingTabID = nil
+        focusTerminalInActiveTab()
     }
 
     func renameTab(id: String, name: String?) {
@@ -264,19 +300,34 @@ final class TabManager: ObservableObject {
 
     /// Make the focused pane's terminal view the first responder so it receives keyboard input.
     func focusTerminalInActiveTab() {
-        guard let tab = activeTab, let pm = tab.paneManager,
+        let request = UUID()
+        terminalFocusRequest = request
+        guard let tab = activeTab, let pm = tab.paneManager else { return }
+        let tabID = tab.id
+        let paneID = pm.focusedPaneID
+        // Defer until SwiftUI has reconciled the tab/split hierarchy, retaining
+        // the existing bounded retry for views that are not yet attached.
+        DispatchQueue.main.async { [weak self] in
+            self?.attemptTerminalFocus(request: request, tabID: tabID, paneID: paneID, remaining: 20)
+        }
+    }
+
+    private func attemptTerminalFocus(request: UUID, tabID: String, paneID: String, remaining: Int) {
+        guard terminalFocusRequest == request, let tab = activeTab, tab.id == tabID,
+              let pm = tab.paneManager, pm.focusedPaneID == paneID,
               let backend = pm.focusedBackend else { return }
         let termView = backend.focusableView
-        // The view of a freshly created tab may not be attached to the window yet
-        // (SwiftUI inserts it lazily), so retry briefly until it is.
-        func attempt(_ remaining: Int) {
-            if let window = termView.window {
-                window.makeFirstResponder(termView)
-            } else if remaining > 0 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { attempt(remaining - 1) }
-            }
+        if let window = termView.window {
+            // A delayed attachment must not take focus from another window,
+            // an owned popover, or a terminal that has since been hidden.
+            guard window.isVisible, window.isKeyWindow, !window.ignoresMouseEvents,
+                  window.childWindows?.contains(where: { $0.isKeyWindow }) != true else { return }
+            if window.firstResponder === termView || window.makeFirstResponder(termView) { return }
         }
-        DispatchQueue.main.async { attempt(20) }
+        guard remaining > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.attemptTerminalFocus(request: request, tabID: tabID, paneID: paneID, remaining: remaining - 1)
+        }
     }
 
     // MARK: - Tab State Persistence
