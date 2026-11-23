@@ -161,6 +161,14 @@ func tabShortTitle(_ title: String) -> String {
     return components.last.map(String.init) ?? title
 }
 
+private struct TabCloseButtonBoundsKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
 struct TabItemView: View {
     @Environment(\.tabBarPalette) private var palette
     let tabID: String
@@ -194,7 +202,7 @@ struct TabItemView: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            // Clickable content area (icon + text + badge)
+            // The full padded tab handles clicks, not just this label group.
             HStack(spacing: 4) {
                 if let icon {
                     Image(systemName: icon)
@@ -239,17 +247,8 @@ struct TabItemView: View {
                         .foregroundColor(appearance.foreground)
                 }
             }
-            .contentShape(Rectangle())
-            .overlay {
-                if !isEditing {
-                    MouseDownOverlay(
-                        action: { onSelect() },
-                        doubleAction: kind == .terminal ? { isEditing = true } : nil
-                    )
-                }
-            }
 
-            // Close button — separate from tap gesture area
+            // Keep the close control independent of selection and rename.
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
@@ -258,6 +257,7 @@ struct TabItemView: View {
             }
             .buttonStyle(.plain)
             .help("Close tab")
+            .anchorPreference(key: TabCloseButtonBoundsKey.self, value: .bounds) { $0 }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -267,6 +267,17 @@ struct TabItemView: View {
             UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6)
                 .fill(appearance.surface)
         )
+        .overlayPreferenceValue(TabCloseButtonBoundsKey.self) { closeBounds in
+            if !isEditing {
+                GeometryReader { geometry in
+                    MouseDownOverlay(
+                        action: { onSelect() },
+                        doubleAction: kind == .terminal ? { isEditing = true } : nil,
+                        excludedRect: closeBounds.map { geometry[$0] }
+                    )
+                }
+            }
+        }
         .overlay(alignment: .bottom) {
             if appearance.showsSelectionIndicator {
                 Rectangle()
@@ -297,23 +308,36 @@ struct TabItemView: View {
 struct MouseDownOverlay: NSViewRepresentable {
     let action: () -> Void
     let doubleAction: (() -> Void)?
+    var excludedRect: CGRect? = nil
 
     func makeNSView(context: Context) -> MouseDownNSView {
         let v = MouseDownNSView()
         v.action = action
         v.doubleAction = doubleAction
+        v.excludedRect = excludedRect
         return v
     }
 
     func updateNSView(_ v: MouseDownNSView, context: Context) {
         v.action = action
         v.doubleAction = doubleAction
+        v.excludedRect = excludedRect
     }
 }
 
 final class MouseDownNSView: NSView {
     var action: (() -> Void)?
     var doubleAction: (() -> Void)?
+    var excludedRect: CGRect?
+
+    // Match SwiftUI's top-left geometry for the close-button exclusion.
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let localPoint = convert(point, from: superview)
+        if excludedRect?.contains(localPoint) == true { return nil }
+        return super.hitTest(point)
+    }
 
     override func mouseDown(with event: NSEvent) {
         if event.clickCount >= 2, let doubleAction {
