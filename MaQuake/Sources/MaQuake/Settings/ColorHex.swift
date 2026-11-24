@@ -88,6 +88,8 @@ struct TabBarPalette {
     let tabReference: Color
     let foreground: Color
     let toolbarForeground: Color
+    private let idleAppearance: Appearance
+    private let hoveredAppearance: Appearance
 
     struct Appearance {
         let surface: Color
@@ -107,15 +109,33 @@ struct TabBarPalette {
         surface = tabRGB.opacity(alpha)
         foreground = tabReference.blackOrWhiteForeground
         toolbarForeground = barReference.blackOrWhiteForeground
+        let idleAlpha = alpha * 0.75
+        let idleReference = tabRGB.composited(over: barReference, opacity: idleAlpha)
+        idleAppearance = Appearance(
+            surface: tabRGB.opacity(idleAlpha),
+            referenceBackground: idleReference,
+            foreground: idleReference.blackOrWhiteForeground,
+            showsSelectionIndicator: false
+        )
+        // Hover changes brightness, not opacity or selection styling.
+        let hoverAccent = tabRGB.relativeLuminance > 0.5 ? Color.black : Color.white
+        let hoverRGB = hoverAccent.composited(over: tabRGB, opacity: 0.1)
+        let hoverReference = hoverRGB.composited(over: barReference, opacity: idleAlpha)
+        hoveredAppearance = Appearance(
+            surface: hoverRGB.opacity(idleAlpha),
+            referenceBackground: hoverReference,
+            foreground: hoverReference.blackOrWhiteForeground,
+            showsSelectionIndicator: false
+        )
     }
 
-    /// Idle tabs sit on the bar. Only selection or direct interaction reveals a face.
+    /// Inactive fills track 75% of the chosen opacity, including during hover.
     func appearance(isActive: Bool, isHovered: Bool = false, isEditing: Bool = false) -> Appearance {
-        let hasFace = isActive || isHovered || isEditing
+        guard isActive || isEditing else { return isHovered ? hoveredAppearance : idleAppearance }
         return Appearance(
-            surface: hasFace ? surface : .clear,
-            referenceBackground: hasFace ? tabReference : barReference,
-            foreground: hasFace ? foreground : toolbarForeground,
+            surface: surface,
+            referenceBackground: tabReference,
+            foreground: foreground,
             showsSelectionIndicator: isActive
         )
     }

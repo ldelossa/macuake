@@ -55,7 +55,9 @@ Uninstalling the cask removes the app, not your Ghostty configuration or saved p
 - Pane zoom retains the real split tree, sessions and divider ratios.
 - Ghostty's tab-title prompt action opens the inline rename editor.
 
-Idle tabs remain flat on the bar, while selected and hovered tabs use the chosen fill.
+Inactive tabs use the chosen fill at 75% of the tab-opacity setting, while selected and editing tabs use the full setting.
+Hover keeps inactive opacity unchanged and gently brightens the fill, or darkens very light fills, rather than applying the selected-tab appearance.
+Text and icons remain fully opaque, with contrast calculated against each tab's fill.
 The selected tab also has a bottom marker.
 
 ## Shortcuts and Ghostty configuration
