@@ -253,14 +253,17 @@ struct TabItemView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundColor(appearance.foreground)
-                    .frame(width: 14, height: 14)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Close tab")
             .help("Close tab")
             .anchorPreference(key: TabCloseButtonBoundsKey.self, value: .bounds) { $0 }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.leading, 10)
+        .padding(.trailing, 3)
+        .padding(.vertical, 2)
         .frame(height: 32)
         .contentShape(Rectangle())
         .background(

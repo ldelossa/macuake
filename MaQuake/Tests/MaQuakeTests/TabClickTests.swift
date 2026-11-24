@@ -79,27 +79,41 @@ struct TabClickTests {
         @Published var editing = false
         var selections = 0
         var closes = 0
+        var dismissals = 0
     }
 
     private struct SurfaceHost: View {
         @ObservedObject var probe: SurfaceProbe
         let kind: Macuake.Tab.TabKind
+        let isActive: Bool
 
         var body: some View {
-            TabItemView(
-                tabID: "surface-test", index: 1, title: "Terminal", kind: kind,
-                isActive: true, customTitle: nil, isEditing: $probe.editing,
-                onSelect: { probe.selections += 1 },
-                onClose: { probe.closes += 1 }, onRename: { _ in }, onHover: { _ in }
-            )
-            .fixedSize()
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    // Match the panel's full-window outside-click dismiss layer.
+                    Color.clear
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .contentShape(Rectangle())
+                        .onTapGesture { probe.dismissals += 1 }
+                    TabItemView(
+                        tabID: "surface-test", index: 1, title: "Terminal", kind: kind,
+                        isActive: isActive, customTitle: nil, isEditing: $probe.editing,
+                        onSelect: { probe.selections += 1 },
+                        onClose: { probe.closes += 1 }, onRename: { _ in }, onHover: { _ in }
+                    )
+                    .fixedSize()
+                }
+            }
         }
     }
 
+    private func surfaces(in view: NSView) -> [MouseDownNSView] {
+        if let surface = view as? MouseDownNSView { return [surface] }
+        return view.subviews.flatMap { surfaces(in: $0) }
+    }
+
     private func surface(in view: NSView) -> MouseDownNSView? {
-        if let surface = view as? MouseDownNSView { return surface }
-        return view.subviews.lazy.compactMap { surface(in: $0) }.first
+        surfaces(in: view).first
     }
 
     private func waitForLayout(in window: NSWindow, until condition: () -> Bool) async -> Bool {
@@ -111,14 +125,33 @@ struct TabClickTests {
         return condition()
     }
 
-    private func hostSurface(kind: Macuake.Tab.TabKind = .terminal) async throws -> (NSWindow, SurfaceProbe, MouseDownNSView) {
+    private func click(_ point: NSPoint, in view: NSView, window: NSWindow) async throws {
+        let location = view.convert(point, to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        let down = try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown, location: location, modifierFlags: [], timestamp: timestamp,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1
+        ))
+        let up = try #require(NSEvent.mouseEvent(
+            with: .leftMouseUp, location: location, modifierFlags: [], timestamp: timestamp + 0.01,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0
+        ))
+        NSApp.sendEvent(down)
+        // Let SwiftUI reconcile the pressed gesture before delivering its release.
+        try await Task.sleep(for: .milliseconds(20))
+        NSApp.sendEvent(up)
+    }
+
+    private func hostSurface(kind: Macuake.Tab.TabKind = .terminal, isActive: Bool = true) async throws -> (NSWindow, SurfaceProbe, MouseDownNSView) {
         let probe = SurfaceProbe()
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 80),
-            styleMask: [.borderless], backing: .buffered, defer: false
+            styleMask: [.titled], backing: .buffered, defer: false
         )
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: SurfaceHost(probe: probe, kind: kind))
+        window.contentView = NSHostingView(rootView: SurfaceHost(probe: probe, kind: kind, isActive: isActive))
+        window.orderFront(nil)
+        window.makeKey()
         try #require(await waitForLayout(in: window) {
             guard let root = window.contentView, let view = surface(in: root) else { return false }
             return view.bounds.height > 0 && view.excludedRect != nil
@@ -162,7 +195,7 @@ struct TabClickTests {
         defer { window.contentView = nil; window.close() }
         let root = try #require(window.contentView)
         let closeRect = try #require(view.excludedRect)
-        #expect(closeRect.width == 14 && closeRect.height == 14)
+        #expect(closeRect.width == 28 && closeRect.height == 28)
         #expect(closeRect.minY > 0 && closeRect.maxY < view.bounds.maxY)
         let closePoint = NSPoint(x: closeRect.midX, y: closeRect.midY)
         #expect(root.hitTest(view.convert(closePoint, to: root.superview)) !== view,
@@ -173,6 +206,68 @@ struct TabClickTests {
                     "Padding above and below the close button still belongs to the tab")
         }
         #expect(probe.selections == 0 && !probe.editing)
+    }
+
+    @Test(arguments: [true, false])
+    func tabCloseEdgesCloseWithoutSelectingRenamingOrDismissing(isActive: Bool) async throws {
+        for kind in [Macuake.Tab.TabKind.terminal, .settings, .help] {
+            let (window, probe, view) = try await hostSurface(kind: kind, isActive: isActive)
+            defer { window.contentView = nil; window.close() }
+            let rect = try #require(view.excludedRect)
+            for x in [rect.minX + 1, rect.midX, rect.maxX - 1] {
+                for y in [rect.minY + 1, rect.midY, rect.maxY - 1] {
+                    let before = probe.closes
+                    try await click(NSPoint(x: x, y: y), in: view, window: window)
+                    try #require(await waitForLayout(in: window) { probe.closes == before + 1 },
+                            "Close target at (\(x), \(y)) must invoke Close exactly once")
+                    #expect(probe.selections == 0)
+                    #expect(!probe.editing)
+                    #expect(probe.dismissals == 0, "Close clicks must never reach the dismiss layer")
+                }
+            }
+        }
+    }
+
+    @Test(arguments: [true, false])
+    func tabCloseEdgeInRealPanelClosesOnlyTargetTabAndKeepsPanelVisible(closeActive: Bool) async throws {
+        let controller = WindowController()
+        controller.state = .visible
+        controller.tabManager.addTab()
+        controller.tabManager.addTab()
+        let manager = controller.tabManager
+        let targetIndex = closeActive ? manager.activeTabIndex : 0
+        let targetID = manager.tabs[targetIndex].id
+        let expectedActiveID = closeActive ? manager.tabs[manager.activeTabIndex - 1].id : manager.activeTab?.id
+        let window = controller.panel
+        window.ignoresMouseEvents = false
+        window.makeKey()
+        defer {
+            window.contentView = nil
+            window.orderOut(nil)
+            manager.tabs.forEach { $0.paneManager?.rootPane.terminateAll() }
+        }
+        let root = try #require(window.contentView)
+        try #require(await waitForLayout(in: window) {
+            guard let view = surface(in: root) else { return false }
+            return view.excludedRect?.width == 28
+        })
+        // SwiftUI's native subview order is not necessarily the tabs' visual order.
+        let orderedSurfaces = surfaces(in: root).sorted {
+            $0.convert($0.bounds, to: root).minX < $1.convert($1.bounds, to: root).minX
+        }
+        try #require(orderedSurfaces.indices.contains(targetIndex))
+        let view = orderedSurfaces[targetIndex]
+        let rect = try #require(view.excludedRect)
+        try await click(NSPoint(x: rect.minX + 1, y: rect.minY + 1), in: view, window: window)
+        #expect(await waitForLayout(in: window) { manager.tabs.count == 2 })
+        #expect(!manager.tabs.contains { $0.id == targetID })
+        #expect(manager.activeTab?.id == expectedActiveID)
+        #expect(manager.editingTabID == nil)
+        #expect(controller.state == .visible)
+        #expect(!controller.isPinned)
+        // Outside-click policy must still work after a successful close.
+        controller.handleGlobalMouseDown(windowNumber: 0)
+        #expect(controller.state == .hidden)
     }
 
     @Test func tabSurface_specialTabsSelectWithoutRenaming() async throws {
