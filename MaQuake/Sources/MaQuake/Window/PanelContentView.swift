@@ -79,29 +79,29 @@ struct PanelContentView: View {
         .frame(width: currentWidth, height: windowController.terminalSize.height)
     }
 
-    // MARK: - Corner drag gesture (preview border, apply on release)
+    // MARK: - Edge drag resize (preview border, apply on release)
 
-    private func cornerDragGesture(edge: HorizontalEdge) -> some Gesture {
+    private func edgeDragGesture(edge: ResizeEdge) -> some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
                 if dragStartSize == .zero {
                     dragStartSize = windowController.terminalSize
                 }
-                let widthDelta: CGFloat = (edge == .left)
-                    ? -value.translation.width * 2
-                    : value.translation.width * 2
-                let screen = windowController.resolvedScreen.frame
-                let newW = max(dragStartSize.width + widthDelta, 300)
-                let newH = max(dragStartSize.height + value.translation.height, 150)
-                resizePreview = CGSize(
-                    width: min(newW, screen.width),
-                    height: min(newH, screen.height * 0.9)
+                resizePreview = ResizePreview.size(
+                    start: dragStartSize,
+                    edge: edge,
+                    translation: value.translation,
+                    screen: windowController.resolvedScreen.frame
                 )
             }
             .onEnded { _ in
                 if let preview = resizePreview {
-                    windowController.updateWidthByDelta(preview.width)
-                    windowController.updateHeightByDelta(preview.height)
+                    switch edge {
+                    case .left, .right:
+                        windowController.updateWidthByDelta(preview.width)
+                    case .bottom:
+                        windowController.updateHeightByDelta(preview.height)
+                    }
                 }
                 resizePreview = nil
                 dragStartSize = .zero
@@ -142,25 +142,24 @@ struct PanelContentView: View {
                             .frame(width: preview.width, height: preview.height)
                     }
 
-                    // Corner resize handles (overlaid at bottom corners)
+                    // Edge resize handles (left/right width, bottom height)
                     if isVisible {
-                        VStack {
-                            Spacer()
-                                .frame(height: currentSize.height - 16)
-                            HStack {
-                                // Bottom-left corner
-                                CornerResizeHandle(edge: .left)
-                                    .gesture(cornerDragGesture(edge: .left))
-                                    .padding(.leading, (windowController.resolvedScreen.frame.width - currentSize.width) / 2)
+                        ZStack(alignment: .topLeading) {
+                            EdgeResizeHandle(edge: .left)
+                                .frame(width: 8, height: currentSize.height)
+                                .gesture(edgeDragGesture(edge: .left))
 
-                                Spacer()
+                            EdgeResizeHandle(edge: .right)
+                                .frame(width: 8, height: currentSize.height)
+                                .offset(x: currentSize.width - 8)
+                                .gesture(edgeDragGesture(edge: .right))
 
-                                // Bottom-right corner
-                                CornerResizeHandle(edge: .right)
-                                    .gesture(cornerDragGesture(edge: .right))
-                                    .padding(.trailing, (windowController.resolvedScreen.frame.width - currentSize.width) / 2)
-                            }
+                            EdgeResizeHandle(edge: .bottom)
+                                .frame(width: currentSize.width, height: 8)
+                                .offset(y: currentSize.height - 8)
+                                .gesture(edgeDragGesture(edge: .bottom))
                         }
+                        .frame(width: currentSize.width, height: currentSize.height)
                     }
                 }
 
@@ -171,22 +170,44 @@ struct PanelContentView: View {
     }
 }
 
-enum HorizontalEdge {
-    case left, right
+enum ResizeEdge {
+    case left, right, bottom
 }
 
-struct CornerResizeHandle: View {
-    let edge: HorizontalEdge
+/// Pure size math for edge drag resize, extracted for unit testing.
+enum ResizePreview {
+    static func size(start: CGSize, edge: ResizeEdge, translation: CGSize, screen: CGRect) -> CGSize {
+        var size = start
+        switch edge {
+        case .left:
+            size.width = start.width - translation.width * 2
+        case .right:
+            size.width = start.width + translation.width * 2
+        case .bottom:
+            size.height = start.height + translation.height
+        }
+        return CGSize(
+            width: min(max(size.width, 300), screen.width),
+            height: min(max(size.height, 150), screen.height * 0.9)
+        )
+    }
+}
+
+struct EdgeResizeHandle: View {
+    let edge: ResizeEdge
 
     var body: some View {
         Color.clear
-            .frame(width: 16, height: 16)
             .contentShape(Rectangle())
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:
-                    NSCursor.crosshair.push()
-                case .ended:
+            .onHover { hovering in
+                if hovering {
+                    switch edge {
+                    case .left, .right:
+                        NSCursor.resizeLeftRight.push()
+                    case .bottom:
+                        NSCursor.resizeUpDown.push()
+                    }
+                } else {
                     NSCursor.pop()
                 }
             }

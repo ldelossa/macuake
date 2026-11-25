@@ -760,32 +760,44 @@ struct PaneManagerAdvancedTests {
     }
 }
 
-// MARK: - HorizontalEdge Tests
+// MARK: - ResizeEdge Tests
 
 @MainActor
 @Suite(.serialized)
-struct HorizontalEdgeExtendedTests {
+struct ResizeEdgeExtendedTests {
 
     @Test func edge_left() {
-        let edge: HorizontalEdge = .left
+        let edge: ResizeEdge = .left
         if case .left = edge { } else {
             Issue.record("Expected .left")
         }
     }
 
     @Test func edge_right() {
-        let edge: HorizontalEdge = .right
+        let edge: ResizeEdge = .right
         if case .right = edge { } else {
             Issue.record("Expected .right")
         }
     }
 
+    @Test func edge_bottom() {
+        let edge: ResizeEdge = .bottom
+        if case .bottom = edge { } else {
+            Issue.record("Expected .bottom")
+        }
+    }
+
     @Test func edge_notEqual() {
-        let left: HorizontalEdge = .left
-        let right: HorizontalEdge = .right
+        let left: ResizeEdge = .left
+        let right: ResizeEdge = .right
+        let bottom: ResizeEdge = .bottom
         // They should be different enum cases
         switch (left, right) {
         case (.left, .right): break // expected
+        default: Issue.record("Edges should differ")
+        }
+        switch (left, bottom) {
+        case (.left, .bottom): break // expected
         default: Issue.record("Edges should differ")
         }
     }

@@ -22,7 +22,7 @@ SUITES=(
     KeyboardRoutingTests KeyboardFocusTests KeyboardBeepTests MouseDownNSViewTests
     GhosttyTerminalViewResponderTests PaneIntegrationTests PaneManagementTests
     PaneManagerAdvancedTests PaneNodeTreeTests TabClickTests TabManagerAdvancedTests
-    TabManagerTests TabTests
+    TabManagerTests TabTests ResizeEdgeTests ResizePreviewMathTests
 )
 run_suite() {
     local mode="$1" suite="$2" log="$LOGS/$1-$2.log" enabled=0
