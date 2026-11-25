@@ -5,39 +5,22 @@ import CoreGraphics
 @Suite(.serialized)
 struct ResizeEdgeTests {
 
-    @Test func resizeEdge_hasThreeCases() {
-        let edges: [ResizeEdge] = [.left, .right, .bottom]
+    @Test func resizeEdge_hasFiveCases() {
+        let edges: [ResizeEdge] = [.left, .right, .bottom, .bottomLeft, .bottomRight]
 
-        switch edges[0] {
-        case .left: break
-        default: Issue.record("Expected .left")
-        }
-        switch edges[1] {
-        case .right: break
-        default: Issue.record("Expected .right")
-        }
-        switch edges[2] {
-        case .bottom: break
-        default: Issue.record("Expected .bottom")
-        }
+        switch edges[0] { case .left: break; default: Issue.record("Expected .left") }
+        switch edges[1] { case .right: break; default: Issue.record("Expected .right") }
+        switch edges[2] { case .bottom: break; default: Issue.record("Expected .bottom") }
+        switch edges[3] { case .bottomLeft: break; default: Issue.record("Expected .bottomLeft") }
+        switch edges[4] { case .bottomRight: break; default: Issue.record("Expected .bottomRight") }
     }
 
     @Test func resizeEdge_casesAreDistinct() {
-        let left = ResizeEdge.left
-        let right = ResizeEdge.right
-        let bottom = ResizeEdge.bottom
-
-        switch (left, right) {
-        case (.left, .right): break
-        default: Issue.record("left and right should differ")
-        }
-        switch (left, bottom) {
-        case (.left, .bottom): break
-        default: Issue.record("left and bottom should differ")
-        }
-        switch (right, bottom) {
-        case (.right, .bottom): break
-        default: Issue.record("right and bottom should differ")
+        let cases: [ResizeEdge] = [.left, .right, .bottom, .bottomLeft, .bottomRight]
+        for i in 0..<cases.count {
+            for j in (i + 1)..<cases.count {
+                #expect(cases[i] != cases[j])
+            }
         }
     }
 }
@@ -171,5 +154,73 @@ struct ResizePreviewMathTests {
             screen: screen
         )
         #expect(result.width == 1000)
+    }
+
+    // MARK: - Proportional corner scaling (top-center anchor)
+
+    @Test func bottomRight_dragDownRight_growsProportionally() {
+        let result = ResizePreview.size(
+            start: CGSize(width: 1000, height: 500),
+            edge: .bottomRight,
+            translation: CGSize(width: 100, height: 100),
+            screen: screen
+        )
+        #expect(abs(result.width - 1200) < 0.5)
+        #expect(abs(result.height - 600) < 0.5)
+    }
+
+    @Test func bottomRight_dragUpLeft_shrinksProportionally() {
+        let result = ResizePreview.size(
+            start: CGSize(width: 1000, height: 500),
+            edge: .bottomRight,
+            translation: CGSize(width: -100, height: -100),
+            screen: screen
+        )
+        #expect(abs(result.width - 800) < 0.5)
+        #expect(abs(result.height - 400) < 0.5)
+    }
+
+    @Test func bottomLeft_dragDownLeft_growsProportionally() {
+        let result = ResizePreview.size(
+            start: CGSize(width: 1000, height: 500),
+            edge: .bottomLeft,
+            translation: CGSize(width: -100, height: 100),
+            screen: screen
+        )
+        #expect(abs(result.width - 1200) < 0.5)
+        #expect(abs(result.height - 600) < 0.5)
+    }
+
+    @Test func corner_preservesAspectRatio() {
+        let start = CGSize(width: 1000, height: 500)
+        let result = ResizePreview.size(
+            start: start,
+            edge: .bottomRight,
+            translation: CGSize(width: 137, height: -23),
+            screen: screen
+        )
+        #expect(abs(result.width / result.height - start.width / start.height) < 0.001)
+    }
+
+    @Test func corner_clampedToMinimumSize() {
+        let result = ResizePreview.size(
+            start: CGSize(width: 1000, height: 500),
+            edge: .bottomRight,
+            translation: CGSize(width: -400, height: -400),
+            screen: screen
+        )
+        #expect(abs(result.width - 300) < 0.5)
+        #expect(abs(result.height - result.width / 2) < 0.5)
+    }
+
+    @Test func corner_clampedToMaximumSize() {
+        let result = ResizePreview.size(
+            start: CGSize(width: 1000, height: 500),
+            edge: .bottomRight,
+            translation: CGSize(width: 1000, height: 1000),
+            screen: screen
+        )
+        #expect(abs(result.width - screen.width) < 0.5)
+        #expect(abs(result.height - result.width / 2) < 0.5)
     }
 }

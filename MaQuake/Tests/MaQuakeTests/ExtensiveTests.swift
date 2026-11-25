@@ -787,6 +787,20 @@ struct ResizeEdgeExtendedTests {
         }
     }
 
+    @Test func edge_bottomLeft() {
+        let edge: ResizeEdge = .bottomLeft
+        if case .bottomLeft = edge { } else {
+            Issue.record("Expected .bottomLeft")
+        }
+    }
+
+    @Test func edge_bottomRight() {
+        let edge: ResizeEdge = .bottomRight
+        if case .bottomRight = edge { } else {
+            Issue.record("Expected .bottomRight")
+        }
+    }
+
     @Test func edge_notEqual() {
         let left: ResizeEdge = .left
         let right: ResizeEdge = .right

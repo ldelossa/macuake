@@ -101,6 +101,9 @@ struct PanelContentView: View {
                         windowController.updateWidthByDelta(preview.width)
                     case .bottom:
                         windowController.updateHeightByDelta(preview.height)
+                    case .bottomLeft, .bottomRight:
+                        windowController.updateWidthByDelta(preview.width)
+                        windowController.updateHeightByDelta(preview.height)
                     }
                 }
                 resizePreview = nil
@@ -158,6 +161,16 @@ struct PanelContentView: View {
                                 .frame(width: currentSize.width, height: 8)
                                 .offset(y: currentSize.height - 8)
                                 .gesture(edgeDragGesture(edge: .bottom))
+
+                            EdgeResizeHandle(edge: .bottomLeft)
+                                .frame(width: 16, height: 16)
+                                .offset(y: currentSize.height - 16)
+                                .gesture(edgeDragGesture(edge: .bottomLeft))
+
+                            EdgeResizeHandle(edge: .bottomRight)
+                                .frame(width: 16, height: 16)
+                                .offset(x: currentSize.width - 16, y: currentSize.height - 16)
+                                .gesture(edgeDragGesture(edge: .bottomRight))
                         }
                         .frame(width: currentSize.width, height: currentSize.height)
                     }
@@ -170,26 +183,53 @@ struct PanelContentView: View {
     }
 }
 
-enum ResizeEdge {
-    case left, right, bottom
+enum ResizeEdge: Equatable {
+    case left, right, bottom, bottomLeft, bottomRight
 }
 
 /// Pure size math for edge drag resize, extracted for unit testing.
 enum ResizePreview {
     static func size(start: CGSize, edge: ResizeEdge, translation: CGSize, screen: CGRect) -> CGSize {
-        var size = start
+        let minWidth: CGFloat = 300
+        let minHeight: CGFloat = 150
+        let maxWidth = screen.width
+        let maxHeight = screen.height * 0.9
+
         switch edge {
         case .left:
-            size.width = start.width - translation.width * 2
+            return CGSize(
+                width: min(max(start.width - translation.width * 2, minWidth), maxWidth),
+                height: start.height
+            )
         case .right:
-            size.width = start.width + translation.width * 2
+            return CGSize(
+                width: min(max(start.width + translation.width * 2, minWidth), maxWidth),
+                height: start.height
+            )
         case .bottom:
-            size.height = start.height + translation.height
+            return CGSize(
+                width: start.width,
+                height: min(max(start.height + translation.height, minHeight), maxHeight)
+            )
+        case .bottomLeft, .bottomRight:
+            // Scale proportionally from the top-center anchor so the top edge
+            // stays put, the panel stays centered, and the aspect ratio holds.
+            let halfWidth = start.width / 2
+            let horizontal: CGFloat = (edge == .bottomRight)
+                ? halfWidth + translation.width
+                : halfWidth - translation.width
+            let vertical = start.height + translation.height
+            let d0 = sqrt(halfWidth * halfWidth + start.height * start.height)
+            let d1 = sqrt(horizontal * horizontal + vertical * vertical)
+            var scale = d0 > 0 ? d1 / d0 : 1
+            let scaleMin = max(minWidth / start.width, minHeight / start.height)
+            let scaleMax = min(maxWidth / start.width, maxHeight / start.height)
+            scale = min(max(scale, scaleMin), scaleMax)
+            return CGSize(
+                width: start.width * scale,
+                height: start.height * scale
+            )
         }
-        return CGSize(
-            width: min(max(size.width, 300), screen.width),
-            height: min(max(size.height, 150), screen.height * 0.9)
-        )
     }
 }
 
@@ -206,6 +246,8 @@ struct EdgeResizeHandle: View {
                         NSCursor.resizeLeftRight.push()
                     case .bottom:
                         NSCursor.resizeUpDown.push()
+                    case .bottomLeft, .bottomRight:
+                        NSCursor.crosshair.push()
                     }
                 } else {
                     NSCursor.pop()
