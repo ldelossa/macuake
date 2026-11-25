@@ -247,7 +247,12 @@ struct EdgeResizeHandle: View {
                     case .bottom:
                         NSCursor.resizeUpDown.push()
                     case .bottomLeft, .bottomRight:
-                        NSCursor.crosshair.push()
+                        if #available(macOS 15.0, *) {
+                            let position: NSCursor.FrameResizePosition = (edge == .bottomLeft) ? .bottomLeft : .bottomRight
+                            NSCursor.frameResize(position: position, directions: .all).push()
+                        } else {
+                            NSCursor.crosshair.push()
+                        }
                     }
                 } else {
                     NSCursor.pop()
